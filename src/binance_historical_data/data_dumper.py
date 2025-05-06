@@ -170,7 +170,7 @@ class BinanceDataDumper:
                 # dumping data.
                 if latest_monthly_data_date != datetime.date.min:
                     if latest_monthly_data_date < monthly_end_date:
-                        date_start_daily = latest_monthly_data_date + relativedelta(days=1)
+                        date_start_daily = monthly_end_date + relativedelta(days=1)
                     else:
                         date_start_daily = date_end + relativedelta(days=1)
                 else:
