@@ -11,6 +11,7 @@ from collections import Counter
 import zipfile
 import datetime
 from dateutil.relativedelta import relativedelta
+from typing import Union, List, Optional
 
 # Third party imports
 from tqdm.auto import tqdm
@@ -29,23 +30,23 @@ class BinanceDataDumper:
     _DICT_DATA_TYPES_BY_ASSET = {
         "spot": ("aggTrades", "klines", "trades"),
         "cm": ("aggTrades", "klines", "trades", "indexPriceKlines", "markPriceKlines", "premiumIndexKlines"),
-        "um": ("aggTrades", "klines", "trades", "indexPriceKlines", "markPriceKlines", "premiumIndexKlines", "metrics")
+        "um": ("aggTrades", "klines", "trades", "indexPriceKlines", "markPriceKlines", "premiumIndexKlines", "metrics"),
     }
     _DATA_FREQUENCY_NEEDED_FOR_TYPE = ("klines", "indexPriceKlines", "markPriceKlines", "premiumIndexKlines")
-    _DATA_FREQUENCY_ENUM = ('1s','1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h',
-                            '1d', '3d', '1w', '1mo')
+    _DATA_FREQUENCY_ENUM = ("1s","1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h",
+                            "1d", "3d", "1w", "1mo")
 
     def __init__(
             self,
-            path_dir_where_to_dump,
-            asset_class="spot",  # spot, um, cm
-            data_type="klines",  # aggTrades, klines, trades
-            data_frequency="1m",  # argument for data_type="klines"
+            path_dir_where_to_dump: Union[str, os.PathLike],
+            asset_class: str = "spot",  # spot, um, cm
+            data_type: str = "klines",  # aggTrades, klines, trades
+            data_frequency:str = "1m",  # argument for data_type="klines"
     ) -> None:
         """Init object to dump all data from binance servers
 
         Args:
-            path_dir_where_to_dump (str): Folder where to dump data
+            path_dir_where_to_dump (str | os.PathLike): Path or directory to dump data
             asset_class (str): Asset class which data to get [spot, futures]
             data_type (str): data type to dump: [aggTrades, klines, trades]
             data_frequency (str): \
@@ -67,28 +68,26 @@ class BinanceDataDumper:
                 raise ValueError(
                     f"Unknown data frequency: {data_frequency} "
                     f"not in {self._DATA_FREQUENCY_ENUM}")
-            self._data_frequency = data_frequency
+            self._data_frequency: str = data_frequency
         else:
-            self._data_frequency = ""
+            self._data_frequency: str = ""
 
-        self.path_dir_where_to_dump = path_dir_where_to_dump
-        self.dict_new_points_saved_by_ticker = defaultdict(dict)
-        self._base_url = "https://data.binance.vision/data"
-        self._asset_class = asset_class
-        self._data_type = data_type
-
-
+        self.path_dir_where_to_dump: Union[str, os.PathLike] = path_dir_where_to_dump
+        self.dict_new_points_saved_by_ticker: defaultdict = defaultdict(dict)
+        self._base_url: str = "https://data.binance.vision/data"
+        self._asset_class: str = asset_class
+        self._data_type: str = data_type
 
 
     @char
     def dump_data(
             self,
-            tickers=None,
-            date_start=None,
-            date_end=None,
-            is_to_update_existing=False,
-            int_max_tickers_to_get=None,
-            tickers_to_exclude=None,
+            tickers: Optional[List[str]] = None,
+            date_start: Optional[Union[datetime.date, str]] = None,
+            date_end: Optional[Union[datetime.date, str]] = None,
+            is_to_update_existing: Optional[bool] = False,
+            int_max_tickers_to_get: Optional[int] = None,
+            tickers_to_exclude: Optional[List[str]] = None,
     ):
         """Main method to dump new of update existing historical data
 
@@ -105,10 +104,15 @@ class BinanceDataDumper:
             int_max_tickers_to_get (int): Max number of trading pairs to get
         """
         self.dict_new_points_saved_by_ticker.clear()
-        list_trading_pairs = self._get_list_trading_pairs_to_download(
+        
+        # Get list of trading pairs to download
+        list_trading_pairs: List[str] = self._get_list_trading_pairs_to_download(
             tickers=tickers, tickers_to_exclude=tickers_to_exclude)
+        
+        # Limit to first int_max_tickers_to_get data if specified
         if int_max_tickers_to_get:
             list_trading_pairs = list_trading_pairs[:int_max_tickers_to_get]
+        
         LOGGER.info(
             "Download full data for %d tickers: ", len(list_trading_pairs))
 
@@ -118,25 +122,32 @@ class BinanceDataDumper:
             os.path.join(os.path.abspath(self.path_dir_where_to_dump), self._asset_class))
 
 
-
-
         LOGGER.info("---> Data Frequency: %s", self._data_frequency)
-        # Start date
-        if date_start is None:
+        
+        # Start date defaulted if not provided or is earlier than available data
+        if date_start is not None:
+            date_start = datetime.datetime.strptime(date_start,"%Y-%m-%d").date()
+        if date_start is None or date_start < datetime.date(year=2017, month=1, day=1) :
             date_start = datetime.date(year=2017, month=1, day=1)
-        if date_start < datetime.date(year=2017, month=1, day=1):
-            date_start = datetime.date(year=2017, month=1, day=1)
-        # End date
-        if date_end is None:
-            date_end = datetime.datetime.utcnow().date() - relativedelta(days=1)
-        if date_end > datetime.datetime.utcnow().date()  - relativedelta(days=1):
-            date_end = datetime.datetime.utcnow().date()  - relativedelta(days=1)
+        
+        # End date defaulted is not provided or is later than available data
+        if date_end is not None:
+            date_end = datetime.datetime.strptime(date_end,"%Y-%m-%d").date()
+        if date_end is None or date_end > datetime.datetime.now(datetime.timezone.utc).date()  - relativedelta(days=1):
+            date_end = datetime.datetime.now(datetime.timezone.utc).date() - relativedelta(days=1)
+        
         LOGGER.info("---> Start Date: %s", date_start.strftime("%Y%m%d"))
         LOGGER.info("---> End Date: %s", date_end.strftime("%Y%m%d"))
+        
+        # First day of end month
         date_end_first_day_of_month = datetime.date(
             year=date_end.year, month=date_end.month, day=1)
+        
+        
         for ticker in tqdm(list_trading_pairs, leave=True, desc="Tickers"):
-            # 1) Download all monthly data
+            # 1) Download all monthly data for available dates
+            # Monthly data will not be available for current month; Retrieve up till previous month
+            
             if self._data_type != "metrics" and (date_end_first_day_of_month - relativedelta(days=1) > date_start):
                 self._download_data_for_1_ticker(
                     ticker=ticker,
@@ -145,11 +156,21 @@ class BinanceDataDumper:
                     timeperiod_per_file="monthly",
                     is_to_update_existing=is_to_update_existing,
                 )
+            # if the latest downloded monthly data does not match requested monthly end date
+            # means monthly data is not yet available for previous month, include in daily data
+               
+            
             # 2) Download all daily date
             if self._data_type == "metrics":
                 date_start_daily = date_start
             else:
-                date_start_daily = date_end_first_day_of_month
+                latest_monthly_data_date = self.get_latest_downloaded_date_for_ticker(ticker=ticker)
+                
+                if latest_monthly_data_date < date_end_first_day_of_month-relativedelta(days=1):
+                    date_start_daily = latest_monthly_data_date + relativedelta(days=1)
+                else:
+                    date_start_daily = date_end_first_day_of_month
+            
             self._download_data_for_1_ticker(
                 ticker=ticker,
                 date_start=date_start_daily,
@@ -161,10 +182,10 @@ class BinanceDataDumper:
         # Print statistics
         self._print_dump_statistics()
 
-    def get_list_all_trading_pairs(self):
+    def get_list_all_trading_pairs(self) -> List[str]:
         """Get all trading pairs available at binance now"""
         # Select the right Top Level Domain for US/non US
-        country_code = self._get_user_country_from_ip()
+        country_code: str = self._get_user_country_from_ip()
         if country_code == "US":
             tld = "us"
         else:
@@ -217,6 +238,25 @@ class BinanceDataDumper:
             return keys
         else:
             raise ValueError("BUCKET_URL not found")
+
+    def get_latest_downloaded_date_for_ticker(self, ticker):
+        """Get latest downloaded date for ticker"""
+        path_folder_prefix = self._get_path_suffix_to_dir_with_data("monthly", ticker)
+        latest_date = datetime.date(year=2017,month=1,day=1)
+        
+        try:
+            files = self._get_list_all_available_files(prefix=path_folder_prefix)
+            for file in files:
+                date_str = file.split('.')[0].split('-')[-2:]
+                date_str = '-'.join(date_str)
+                date_obj = datetime.datetime.strptime(date_str, '%Y-%m').date()
+                if date_obj > latest_date:
+                    latest_date = date_obj
+            
+        except Exception as e:
+            LOGGER.error('Latest date not found: ', e)
+        
+        return latest_date + relativedelta(months=1) - relativedelta(days=1)
 
     def get_min_start_date_for_ticker(self, ticker):
         """Get minimum start date for ticker"""
@@ -634,7 +674,7 @@ class BinanceDataDumper:
             self,
             tickers=None,
             tickers_to_exclude=None
-    ):
+    )-> List[str]:
         """
         Create list of tickers for which to get data (by default all **USDT)
         """
