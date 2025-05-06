@@ -154,7 +154,7 @@ class BinanceDataDumper:
             else:
                 latest_monthly_data_date = self.get_latest_downloaded_date_for_ticker(ticker=ticker)
                 
-                if latest_monthly_data_date != datetime.MINYEAR and latest_monthly_data_date < date_end_first_day_of_month-relativedelta(days=1):
+                if latest_monthly_data_date != datetime.date.min and latest_monthly_data_date < date_end_first_day_of_month-relativedelta(days=1):
                     date_start_daily = latest_monthly_data_date + relativedelta(days=1)
                 else:
                     date_start_daily = date_end_first_day_of_month
@@ -230,7 +230,7 @@ class BinanceDataDumper:
     def get_latest_downloaded_date_for_ticker(self, ticker):
         """Get latest downloaded date for ticker"""
         path_folder_prefix = self._get_path_suffix_to_dir_with_data("monthly", ticker)
-        latest_date = datetime.MINYEAR
+        latest_date = datetime.date.min
         
         try:
             files = self._get_list_all_available_files(prefix=path_folder_prefix)
@@ -244,7 +244,7 @@ class BinanceDataDumper:
         except Exception as e:
             LOGGER.error('Latest date not found: ', e)
         
-        if latest_date == datetime.MINYEAR:
+        if latest_date == datetime.date.min:
             return latest_date
         return latest_date + relativedelta(months=1) - relativedelta(days=1)
     
